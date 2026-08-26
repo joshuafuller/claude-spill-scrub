@@ -15,7 +15,18 @@ machine. This tool does the cleanup half.
 
 ## Quickstart
 
-Python 3.10+, standard library only. No dependencies.
+Nothing to clone, no dependencies. In a Claude Code session:
+
+```
+/plugin marketplace add joshuafuller/claude-spill-scrub
+/plugin install spill-scrub@claude-spill-scrub
+```
+
+Then `/reload-skills` and run `/spill-scrub`. That is the whole onboarding — the
+same two commands work from a terminal as `claude plugin …`. See
+[Install as a Claude Code skill](#install-as-a-claude-code-skill).
+
+Prefer the bare script? Python 3.10+, standard library only:
 
 ```bash
 git clone https://github.com/joshuafuller/claude-spill-scrub
@@ -25,8 +36,8 @@ cd claude-spill-scrub
 ./spillscrub.py scrub --yes               # irreversible. tier 1 only by default.
 ```
 
-Then **quit Claude Code and run `scrub` again** — the files holding the most
-secrets are the ones Claude Code has open. See [Run it twice](#run-it-twice).
+Either way: **quit Claude Code and run `scrub` again** — the files holding the
+most secrets are the ones Claude Code has open. See [Run it twice](#run-it-twice).
 
 Three names, one thing:
 
