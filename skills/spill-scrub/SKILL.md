@@ -1,6 +1,8 @@
 ---
 name: spill-scrub
 description: Find and scrub credentials that leaked into Claude Code's own local logs (transcripts, paste-cache, shell snapshots, ~/.claude.json). Use when the user mentions a spillage, a leaked or pasted secret, "clean the logs", "scrub my transcripts", "I pasted a key", "did a token get logged", or after any incident where a credential reached a chat window. Also use before sharing, syncing, or archiving a machine's ~/.claude directory.
+license: MIT
+allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/spillscrub.py scan) Bash(python3 ${CLAUDE_SKILL_DIR}/spillscrub.py scan *)
 ---
 
 # spill-scrub
@@ -17,13 +19,19 @@ workflow believing the incident is closed because the files are clean.
 
 ## Running the script
 
-`spillscrub.py` sits next to this file. Resolve it in this order and use the first
-one that exists:
+`spillscrub.py` sits next to this file. Always invoke it as:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/spill-scrub/spillscrub.py"   # installed as a plugin
-~/.claude/skills/spill-scrub/spillscrub.py                 # installed by install.sh
+python3 ${CLAUDE_SKILL_DIR}/spillscrub.py <args>
 ```
+
+`${CLAUDE_SKILL_DIR}` resolves to this skill's own directory whichever way it was
+installed — plugin, `~/.claude/skills/`, or a project's `.claude/skills/` — so do
+not guess at paths or `cd` first.
+
+`scan` is pre-approved in this skill's frontmatter and runs without a permission
+prompt. `scrub` is deliberately **not** pre-approved: it rewrites files in place,
+so it should cost a permission prompt every time.
 
 Everything below writes `spillscrub.py` for brevity.
 
@@ -32,7 +40,7 @@ Everything below writes `spillscrub.py` for brevity.
 ### 1. Scan first. Always.
 
 ```bash
-python3 spillscrub.py scan --context --manifest ~/spill-manifest.json
+python3 ${CLAUDE_SKILL_DIR}/spillscrub.py scan --context --manifest ~/spill-manifest.json
 ```
 
 Scan is read-only. It takes about 15 seconds over a 600 MB corpus on a many-core
@@ -65,8 +73,8 @@ Scrubbing is irreversible and touches hundreds of files. Confirm before running 
 even if the user asked for a cleanup up front — confirm *what* will be rewritten.
 
 ```bash
-python3 spillscrub.py scrub --yes             # tier 1 only (default)
-python3 spillscrub.py scrub --yes --tier 0    # include tier 2
+python3 ${CLAUDE_SKILL_DIR}/spillscrub.py scrub --yes             # tier 1 only (default)
+python3 ${CLAUDE_SKILL_DIR}/spillscrub.py scrub --yes --tier 0    # include tier 2
 ```
 
 `scrub` deliberately defaults to tier 1. Only reach for `--tier 0` after the user
@@ -115,4 +123,4 @@ next door accomplishes nothing.
 ## Reference
 
 `README.md` next to this file covers the flags, the target list, the rule tiers,
-and how to add a rule. `python3 spillscrub.py --help` lists everything.
+and how to add a rule. `spillscrub.py --help` lists everything.
