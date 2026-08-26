@@ -113,8 +113,6 @@ no findings comes out byte-for-byte identical.
 
 ## Run it twice
 
-This is the part that surprises people.
-
 `scrub` skips any file modified in the last 15 minutes (`--quiet-seconds`) and any
 session id in `$CLAUDE_SESSION_ID`. Rewriting a file a running session holds open
 either corrupts it or gets clobbered on the next write.
@@ -222,7 +220,7 @@ compromised.
 `Authorization: Bearer …`, behind an entropy floor and a placeholder denylist that
 drops `changeme`, `<your-key>`, `${VAR}` and friends.
 
-Be honest about tier 2's noise. On that same corpus it produced ~1,140 candidates
+Tier 2 is noisy. On that same corpus it produced ~1,140 candidates
 and the large majority were Kubernetes manifests, YAML keys, and source code that
 merely *look* like `secret: value`. That is why `scrub` defaults to tier 1 and
 `--tier 0` must be asked for. Triage tier 2 with `--context` before widening.
