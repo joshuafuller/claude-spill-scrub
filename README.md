@@ -99,7 +99,7 @@ transcript you are cleaning, and end on rotation rather than on a clean file.
 # 3. High-precision rules only, if tier 2 is noisy for you.
 ./spillscrub.py scan --tier 1
 
-# 4. Clean. Irreversible.
+# 4. Clean. Irreversible. Defaults to tier 1; add --tier 0 to include tier 2.
 ./spillscrub.py scrub --yes
 
 # 5. Clean, but keep the originals somewhere (the backups still hold the plaintext).
@@ -109,12 +109,41 @@ transcript you are cleaning, and end on rotation rather than on a clean file.
 ./spillscrub.py scan --only ./some/log/dir
 ```
 
-**Quit Claude Code before scrubbing.** By default `scrub` skips any file modified
-in the last 15 minutes (`--quiet-seconds`) and any session id in
-`$CLAUDE_SESSION_ID`, because rewriting a transcript a running session holds open
-either corrupts it or gets clobbered. `--include-live` overrides that. Do not.
-
 Exit codes: `0` clean, `1` findings, `2` usage error.
+
+## You have to run it twice
+
+This is the part that surprises people, so it gets its own heading.
+
+`scrub` skips any file modified in the last 15 minutes (`--quiet-seconds`) and any
+session id in `$CLAUDE_SESSION_ID`. Rewriting a file a running session holds open
+either corrupts it or gets clobbered on the next write.
+
+The catch: **the files with the most secrets in them are always the live ones.**
+On a real run against a 600 MB corpus, the first pass cleaned 15 files and left 42
+credentials behind — every one of them in a file Claude Code was actively writing:
+
+```
+25  ~/.claude/history.jsonl                     <- prompt history, the worst offender
+14  ~/.claude/projects/<current-session>.jsonl
+10  ~/.claude/file-history/<current-session>/...
+ 2  ~/.claude.json
+ 2  x5  ~/.claude/backups/.claude.json.backup.*  <- one copy per config change
+```
+
+So the workflow is:
+
+1. `./spillscrub.py scrub --yes` — cleans everything dormant.
+2. **Quit Claude Code.**
+3. `./spillscrub.py scrub --yes` again — this pass gets `history.jsonl`,
+   `~/.claude.json`, and the config backups.
+4. `./spillscrub.py scan --tier 1` — confirm it comes back clean.
+
+Do not reach for `--include-live` to skip step 2. It exists for the test suite.
+
+Note the `backups/.claude.json.backup.*` pile. Claude Code writes a new one on
+every config change, so a single MCP API key can sit in ten files. Cleaning
+`~/.claude.json` alone accomplishes very little.
 
 ## What it looks at
 
@@ -129,11 +158,16 @@ Add more with `--path`. Binary files and anything over 512 MB are skipped.
 
 ## After you scrub
 
-1. **Rotate every secret in the manifest.** Not optional.
+1. **Rotate every secret in the manifest.** Not optional. The scrub removed the
+   value from your disk; it revoked nothing.
 2. Check where else it went: shell history, git history, `~/.aws`, `~/.config`, CI
    variables, ticket comments.
 3. Report it if your organisation requires that. A spillage you cleaned quietly is
    still a spillage.
+4. Delete the manifest and any `--backup-dir` once you have rotated. The manifest
+   holds only hashes and paths, but the backups hold the plaintext, which makes
+   them a fresh spillage in a new location. Write both outside `~/.claude` so the
+   next scan does not pick them up.
 
 ## Verification
 
@@ -147,6 +181,14 @@ rehearsed against a full copy of a real `~/.claude` before it was trusted:
 residual tier-1 secrets after the scrub: 0
 ```
 
+The first real run against a live `~/.claude`, after the rehearsal:
+
+```
+588 MB, 2,786 files examined, 15 rewritten, 77 redactions, 18 distinct secrets
+12 files skipped as live
+all rewritten .jsonl re-parsed clean, 0 write errors, 0 leftover .tmp files
+```
+
 That rehearsal is also what caught the worst bug in this tool: multi-line PEM
 blocks were being *detected and reported* but never actually removed, because the
 rewrite worked line by line. The unit tests could not see it — they all used
@@ -156,6 +198,18 @@ single-line fixtures. If you change the scrub path, rehearse on a copy:
 cp -a ~/.claude /tmp/rehearse/.claude && cp ~/.claude.json /tmp/rehearse/
 ./spillscrub.py scrub --yes --tier 0 --include-live --only /tmp/rehearse
 ```
+
+## Some of your .jsonl files were already invalid
+
+Worth knowing before you blame this tool. Claude Code occasionally writes a
+transcript record containing literal newlines inside a JSON string, which splits
+one record across several lines and makes those lines unparseable as JSONL. A real
+corpus here had three such lines out of 12,167 in one file.
+
+spillscrub leaves them exactly as it found them — the guard only rewrites a line
+if it parsed as JSON before *and* still parses after. If you validate your
+transcripts after a scrub and find a broken line, check it for a
+`[REDACTED rule=… sha=…]` marker first. No marker means the tool never touched it.
 
 ## On tier 2
 
