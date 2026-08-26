@@ -86,19 +86,21 @@ Hand back the deduplicated rotation list and say plainly:
 
 ## Where the leaks actually are
 
-In practice the heaviest concentrations are, in order:
+On the one corpus this has been run against — a single developer machine, ~600 MB
+of transcripts — the concentrations were, heaviest first. Treat it as a starting
+order to check, not a law:
 
 1. `~/.claude/history.jsonl` — prompt history. Everything ever typed, in one file.
 2. `~/.claude.json` and `~/.claude/backups/.claude.json.backup.*` — MCP server
    `env` blocks hold API keys in plaintext, and every backup holds an old copy.
 3. `~/.claude/projects/**/*.jsonl` — session transcripts, the bulk by volume.
-4. `~/.claude/paste-cache/` — pasted content, the most common entry route.
+4. `~/.claude/paste-cache/` — pasted content.
 5. `~/.claude/file-history/` — pre-edit copies, so any `.env` Claude ever edited
    is here in full.
 6. `~/.claude/shell-snapshots/` — exported environment variables.
 
-Check the backups. Users clean `.claude.json` and leave ten timestamped copies of
-it next door.
+Check the backups. Cleaning `.claude.json` while leaving its timestamped copies
+next door accomplishes nothing.
 
 ## Do not
 

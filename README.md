@@ -87,7 +87,8 @@ Real output, on a throwaway directory with planted keys:
 ```
 
 Secrets are identified by a SHA-256 prefix, never printed. The same key appears in
-dozens of transcripts, so the deduplicated list is what you actually work from.
+many transcripts — context gets re-read — so the deduplicated list is what you
+work from.
 
 ## What a scrub does to a line
 
@@ -122,7 +123,7 @@ first pass, 15 files were cleaned and 42 credentials were left behind — every 
 in a file Claude Code was actively writing:
 
 ```
-25  ~/.claude/history.jsonl                     <- prompt history, the worst offender
+25  ~/.claude/history.jsonl                     <- prompt history
 14  ~/.claude/projects/<current-session>.jsonl
 10  ~/.claude/file-history/<current-session>/...
  2  ~/.claude.json
@@ -229,7 +230,7 @@ merely *look* like `secret: value`. That is why `scrub` defaults to tier 1 and
 
 Under `~/.claude`: `projects/**/*.jsonl` (transcripts), `projects/**/*.md` (memory
 files), `shell-snapshots/` (exported env vars), `paste-cache/` (pasted content — a
-very common way a token gets in), `file-history/` and `backups/` (pre-edit copies,
+a route a token can take), `file-history/` and `backups/` (pre-edit copies,
 so a `.env` Claude once edited is here in plaintext), `session-env/`, `sessions/`,
 `debug/`, `todos/`, `history.jsonl`, `daemon.log`. Plus `~/.claude.json`, where MCP
 server `env` blocks keep API keys.
