@@ -138,9 +138,10 @@ took over eight minutes on the same corpus. Use `-j` to change the worker count.
 python3 tests/test_spillscrub.py
 ```
 
-24 tests. They plant fake-but-correctly-shaped credentials alongside benign
+27 tests. They plant fake-but-correctly-shaped credentials alongside benign
 lookalikes and assert both directions: every planted secret is caught, no benign
 line is flagged, JSONL still parses after a scrub, a clean file is byte-identical,
+the scrub is idempotent, the masked context never leaks the value,
 permissions and line endings survive, and the manifest never contains a secret.
 
 ## Adding a rule
