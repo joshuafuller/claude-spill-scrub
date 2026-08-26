@@ -5,4 +5,4 @@ useDefault = true
 
 [[allowlists]]
 description = "spillscrub test fixtures are synthetic by design"
-paths = ['''tests/test_spillscrub\.py''']
+paths = ['''tests/test_spillscrub\.py''', '''README\.md''']

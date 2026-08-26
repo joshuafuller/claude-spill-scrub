@@ -160,9 +160,9 @@ claude plugin install spill-scrub@claude-spill-scrub
 Then `/reload-skills` picks it up live — no restart. Invoke it with
 `/spill-scrub`.
 
-While the repo is private, `marketplace add` needs credentials that can clone it —
-`gh auth login` or an SSH key. Once it is public, neither is needed. A local
-checkout works too, which is the fastest way to iterate on the skill itself:
+No credentials needed — the repo is public. A local checkout can also be
+registered as a marketplace, which is the fastest way to iterate on the skill
+itself:
 
 ```bash
 claude plugin marketplace add ~/development/claude-spill-scrub

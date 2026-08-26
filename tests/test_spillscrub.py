@@ -69,14 +69,14 @@ class TestDetection(unittest.TestCase):
         self.assertTrue(any(m.rule == "private-key-block" for m in found))
 
     def test_url_basic_auth_scrubs_only_the_password(self):
-        text = "git clone https://joshua:Sup3rS3cr3tPw@gitlab.com/olympus/repo.git"
+        text = "git clone https://alice:Sup3rS3cr3tPw@gitlab.example.com/team/repo.git"
         found = ss.find_matches(text, ss.ALL_RULES)
         self.assertTrue(found)
         m = found[0]
         self.assertEqual(m.secret, "Sup3rS3cr3tPw")
         out = ss.redact_text(text, found)
-        self.assertIn("https://joshua:[REDACTED rule=url-basic-auth", out)
-        self.assertIn("@gitlab.com/olympus/repo.git", out)
+        self.assertIn("https://alice:[REDACTED rule=url-basic-auth", out)
+        self.assertIn("@gitlab.example.com/team/repo.git", out)
         self.assertNotIn("Sup3rS3cr3tPw", out)
 
     def test_benign_lookalikes_are_not_flagged(self):
