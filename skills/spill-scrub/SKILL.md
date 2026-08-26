@@ -15,12 +15,24 @@ into context every time that session is resumed. This skill does the cleanup.
 key. Every run ends by telling the user to rotate. Never let a user finish this
 workflow believing the incident is closed because the files are clean.
 
+## Running the script
+
+`spillscrub.py` sits next to this file. Resolve it in this order and use the first
+one that exists:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/skills/spill-scrub/spillscrub.py"   # installed as a plugin
+~/.claude/skills/spill-scrub/spillscrub.py                 # installed by install.sh
+```
+
+Everything below writes `spillscrub.py` for brevity.
+
 ## Workflow
 
 ### 1. Scan first. Always.
 
 ```bash
-python3 <skill_dir>/spillscrub.py scan --context --manifest ~/spill-manifest.json
+python3 spillscrub.py scan --context --manifest ~/spill-manifest.json
 ```
 
 Scan is read-only. It takes about 15 seconds over a 600 MB corpus on a many-core
@@ -53,8 +65,8 @@ Scrubbing is irreversible and touches hundreds of files. Confirm before running 
 even if the user asked for a cleanup up front — confirm *what* will be rewritten.
 
 ```bash
-python3 <skill_dir>/spillscrub.py scrub --yes             # tier 1 only (default)
-python3 <skill_dir>/spillscrub.py scrub --yes --tier 0    # include tier 2
+python3 spillscrub.py scrub --yes             # tier 1 only (default)
+python3 spillscrub.py scrub --yes --tier 0    # include tier 2
 ```
 
 `scrub` deliberately defaults to tier 1. Only reach for `--tier 0` after the user
