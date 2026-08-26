@@ -53,11 +53,13 @@ Scrubbing is irreversible and touches hundreds of files. Confirm before running 
 even if the user asked for a cleanup up front — confirm *what* will be rewritten.
 
 ```bash
-python3 <skill_dir>/spillscrub.py scrub --yes --tier 1     # certain hits only
-python3 <skill_dir>/spillscrub.py scrub --yes              # everything
+python3 <skill_dir>/spillscrub.py scrub --yes             # tier 1 only (default)
+python3 <skill_dir>/spillscrub.py scrub --yes --tier 0    # include tier 2
 ```
 
-Prefer `--tier 1` on the first pass. Offer `--backup-dir` only with the warning
+`scrub` deliberately defaults to tier 1. Only reach for `--tier 0` after the user
+has triaged the review hits, and expect most of them to be false positives —
+Kubernetes manifests and source code full of `secret: value` lines. Offer `--backup-dir` only with the warning
 that the backups still contain the plaintext, so they are a new spillage unless
 deleted after rotation.
 

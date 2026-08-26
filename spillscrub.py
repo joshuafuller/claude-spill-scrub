@@ -22,7 +22,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 # --------------------------------------------------------------------------
 # What we look at
@@ -329,6 +329,8 @@ def redact_text(text: str, matches: list[Match]) -> str:
 
 
 def iter_target_files(root: Path, home: Path, extra_paths: list[Path]) -> list[Path]:
+    """`home` is only used to locate <home>/.claude.json. It is derived from
+    `root` by the caller so that --root actually redirects everything."""
     seen: set[Path] = set()
     files: list[Path] = []
 
@@ -403,6 +405,17 @@ class FileResult:
     error: str | None = None
 
 
+def _was_json(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped or stripped[0] not in "{[":
+        return False
+    try:
+        json.loads(stripped)
+        return True
+    except (ValueError, RecursionError):
+        return False
+
+
 def _needs_lower(rules) -> bool:
     return any(r.ci_anchors for r in rules)
 
@@ -433,39 +446,66 @@ def scrub_file(path: Path, rules, backup_dir: Path | None) -> FileResult:
     # Whole-file pass first. Most files have nothing, and this avoids paying the
     # per-line regex setup cost across millions of transcript lines.
     lowered = original.lower() if _needs_lower(rules) else None
-    if not find_matches(original, rules, lowered):
+    whole = find_matches(original, rules, lowered)
+    if not whole:
         return res
 
-    is_jsonl = path.suffix == ".jsonl"
+    # A PEM block spans lines, so the line-by-line rewrite below can never see
+    # it. Redact those spans against the whole document first. This cannot break
+    # a .jsonl file - a JSONL record has no literal newline in it, so no match
+    # there is ever multi-line - and the whole-document JSON guard further down
+    # catches a pretty-printed file.
+    multiline = [m for m in whole if "\n" in original[m.start:m.end]]
+    working = original
+    ml_matches: list[Match] = []
+    if multiline:
+        working = redact_text(original, multiline)
+        ml_matches = multiline
+
     out_lines = []
     all_matches: list[Match] = []
     bad_lines = 0
 
-    for line in original.splitlines(keepends=True):
+    for line in working.splitlines(keepends=True):
         matches = find_matches(line, rules)
         if not matches:
             out_lines.append(line)
             continue
         new_line = redact_text(line, matches)
-        if is_jsonl:
-            stripped = new_line.strip()
-            if stripped:
-                try:
-                    json.loads(stripped)
-                except (ValueError, RecursionError):
-                    out_lines.append(line)       # refuse to corrupt
-                    bad_lines += 1
-                    continue
+        # If the line parsed as JSON before the edit it must still parse after.
+        # Keyed on the content, not on the file suffix: ~/.claude.json and the
+        # timestamped .claude.json.backup.* files are JSON too, and they are
+        # exactly where a corrupted rewrite hurts most.
+        if _was_json(line) and not _was_json(new_line):
+            out_lines.append(line)               # refuse to corrupt
+            bad_lines += 1
+            continue
         out_lines.append(new_line)
         all_matches.extend(matches)
 
-    res.matches = all_matches
+    res.matches = ml_matches + all_matches
     if bad_lines:
         res.error = f"{bad_lines} line(s) left untouched: redaction would break JSON"
 
     new_text = "".join(out_lines)
     if new_text == original:
         return res
+
+    # Pretty-printed JSON spans many lines, so the per-line guard above never
+    # fires for it. Validate the whole document instead and abort if we broke it.
+    stripped = original.strip()
+    if stripped and stripped[0] in "{[":
+        try:
+            json.loads(stripped)
+        except (ValueError, RecursionError):
+            pass                                  # was not valid JSON to begin with
+        else:
+            try:
+                json.loads(new_text.strip())
+            except (ValueError, RecursionError):
+                res.error = "aborted: redaction would break this JSON document"
+                res.matches = []
+                return res
 
     if backup_dir is not None:
         dest = backup_dir / path.resolve().relative_to("/")
@@ -664,8 +704,10 @@ def main(argv=None) -> int:
                    help="extra file or directory to include (repeatable)")
     p.add_argument("--only", action="append", default=[],
                    help="restrict to these targets; skips the default ~/.claude sweep")
-    p.add_argument("--tier", type=int, choices=[1, 2], default=None,
-                   help="1 = high-precision rules only; 2 = tier2 only; default both")
+    p.add_argument("--tier", type=int, choices=[0, 1, 2], default=None,
+                   help="1 = high-precision only, 2 = contextual only, 0 = both. "
+                        "scan defaults to both; scrub defaults to 1, because tier 2 "
+                        "carries false positives and scrubbing is irreversible")
     p.add_argument("--yes", action="store_true",
                    help="required for scrub: confirm irreversible in-place rewrite")
     p.add_argument("--backup-dir", default=None,
@@ -689,12 +731,15 @@ def main(argv=None) -> int:
     root = Path(args.root).expanduser()
     home = Path.home()
 
-    if args.tier == 1:
-        rules = TIER1
-    elif args.tier == 2:
-        rules = TIER2
-    else:
-        rules = ALL_RULES
+    tier = args.tier
+    if tier is None:
+        # Scanning both tiers costs nothing. Rewriting on the back of an
+        # untriaged tier-2 hit is how you lose data you cannot get back.
+        tier = 0 if args.mode == "scan" else 1
+        if args.mode == "scrub":
+            print("  tier not given: scrubbing tier 1 (certain) only. "
+                  "Use --tier 0 to include contextual hits.")
+    rules = {1: TIER1, 2: TIER2}.get(tier, ALL_RULES)
 
     if args.only:
         files = []
@@ -710,7 +755,11 @@ def main(argv=None) -> int:
         if not root.is_dir():
             print(f"error: root not found: {root}", file=sys.stderr)
             return 2
-        files = iter_target_files(root, home, [Path(x).expanduser() for x in args.path])
+            # .claude.json sits next to the .claude directory, so a redirected
+        # --root must move it too. Otherwise --root looks like a safe rehearsal
+        # and still rewrites the real config.
+        files = iter_target_files(root, root.parent,
+                                  [Path(x).expanduser() for x in args.path])
 
     skip_ids = set(args.skip_session)
     env_sid = os.environ.get("CLAUDE_SESSION_ID")
@@ -736,7 +785,7 @@ def main(argv=None) -> int:
 
     jobs = args.jobs or min(32, os.cpu_count() or 1)
     t0 = time.time()
-    results = process_files(files, args.tier, args.mode, backup_dir, jobs)
+    results = process_files(files, tier, args.mode, backup_dir, jobs)
     elapsed = time.time() - t0
 
     manifest = build_manifest(results)
@@ -745,6 +794,7 @@ def main(argv=None) -> int:
     manifest["files_skipped_live"] = [str(p) for p, _ in skipped]
     manifest["elapsed_seconds"] = round(elapsed, 2)
     manifest["jobs"] = jobs
+    manifest["tier"] = tier
 
     total_mb = sum(_safe_size(r.path) for r in results) / 1e6
     print(f"  {total_mb:.0f} MB in {elapsed:.1f}s on {jobs} worker(s) "

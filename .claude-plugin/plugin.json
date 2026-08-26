@@ -1,0 +1,21 @@
+{
+  "name": "spill-scrub",
+  "version": "1.1.0",
+  "description": "Find and scrub credentials that leaked into Claude Code's own local logs. Scan is read-only, scrub is gated, and every run ends on a rotation checklist.",
+  "author": {
+    "name": "Joshua Fuller",
+    "url": "https://github.com/joshuafuller"
+  },
+  "repository": "https://github.com/joshuafuller/claude-spill-scrub",
+  "homepage": "https://github.com/joshuafuller/claude-spill-scrub",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "secrets",
+    "spillage",
+    "redaction",
+    "incident-response",
+    "credential-rotation"
+  ],
+  "skills": "./skills/"
+}

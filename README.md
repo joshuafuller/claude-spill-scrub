@@ -62,10 +62,25 @@ cd claude-spill-scrub
 ./spillscrub.py scan
 ```
 
-As a Claude Code skill (`/spill-scrub`):
+As a Claude Code plugin, from the marketplace:
+
+```
+/plugin marketplace add joshuafuller/claude-spill-scrub
+/plugin install spill-scrub@claude-spill-scrub
+```
+
+While the repo is private, `marketplace add` needs git credentials for it — a
+`gh auth login` or an SSH key that can clone it. For a public fork, neither is
+needed. You can also point it at a local checkout:
+
+```
+/plugin marketplace add ~/development/claude-spill-scrub
+```
+
+Or install the skill by hand, without the plugin system:
 
 ```bash
-./install.sh      # symlinks skill/ into ~/.claude/skills/spill-scrub
+./install.sh      # symlinks skills/spill-scrub into ~/.claude/skills/
 ```
 
 The skill wraps the same script with the workflow that matters: scan before
@@ -120,6 +135,37 @@ Add more with `--path`. Binary files and anything over 512 MB are skipped.
 3. Report it if your organisation requires that. A spillage you cleaned quietly is
    still a spillage.
 
+## Verification
+
+Correctness here means "did not destroy 600 MB of transcripts", so the scrub was
+rehearsed against a full copy of a real `~/.claude` before it was trusted:
+
+```
+1781 MB, 19,964 files, 909 rewritten, 5,270 redactions
+3,215 files that parsed as JSON or JSONL before  ->  0 corrupted after
+0 leftover .tmp files, 0 write errors
+residual tier-1 secrets after the scrub: 0
+```
+
+That rehearsal is also what caught the worst bug in this tool: multi-line PEM
+blocks were being *detected and reported* but never actually removed, because the
+rewrite worked line by line. The unit tests could not see it — they all used
+single-line fixtures. If you change the scrub path, rehearse on a copy:
+
+```bash
+cp -a ~/.claude /tmp/rehearse/.claude && cp ~/.claude.json /tmp/rehearse/
+./spillscrub.py scrub --yes --tier 0 --include-live --only /tmp/rehearse
+```
+
+## On tier 2
+
+Be honest about the noise. On a real 600 MB corpus, tier 1 found 75 credentials
+and every one was genuine. Tier 2 found ~1,140 candidates, and the large majority
+were Kubernetes manifests, YAML keys, and source code that merely *look* like
+`secret: value`. That is why `scrub` defaults to tier 1 and you must ask for
+`--tier 0` explicitly. Use `--context` to triage tier 2 by hand; the context
+string shows the surrounding line with the value replaced by its length.
+
 ## Speed
 
 Whole-corpus scan, not line-by-line. Each rule carries a literal anchor
@@ -138,10 +184,11 @@ took over eight minutes on the same corpus. Use `-j` to change the worker count.
 python3 tests/test_spillscrub.py
 ```
 
-27 tests. They plant fake-but-correctly-shaped credentials alongside benign
+37 tests. They plant fake-but-correctly-shaped credentials alongside benign
 lookalikes and assert both directions: every planted secret is caught, no benign
 line is flagged, JSONL still parses after a scrub, a clean file is byte-identical,
-the scrub is idempotent, the masked context never leaks the value,
+the scrub is idempotent, multi-line PEM blocks are actually removed, pretty-printed
+~/.claude.json survives, the masked context never leaks the value,
 permissions and line endings survive, and the manifest never contains a secret.
 
 ## Adding a rule

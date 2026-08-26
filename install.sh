@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Install spill-scrub as a Claude Code skill by symlinking this repo's skill/
-# directory into ~/.claude/skills. Pulling the repo then updates the skill.
+# Manual install: symlink this repo's skill into ~/.claude/skills.
+# Prefer the plugin marketplace instead (see README) - this is the fallback for
+# an air-gapped box or a checkout you want to edit in place.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}/spill-scrub"
@@ -10,6 +11,6 @@ if [ -e "$DEST" ] && [ ! -L "$DEST" ]; then
   echo "refusing to overwrite non-symlink: $DEST" >&2
   exit 1
 fi
-ln -sfn "$REPO/skill" "$DEST"
-echo "installed: $DEST -> $REPO/skill"
+ln -sfn "$REPO/skills/spill-scrub" "$DEST"
+echo "installed: $DEST -> $REPO/skills/spill-scrub"
 echo "restart Claude Code, then use /spill-scrub"

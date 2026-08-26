@@ -1,0 +1,22 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-spill-scrub",
+  "description": "Cleanup tooling for credentials that leaked into Claude Code's own local logs.",
+  "owner": {
+    "name": "Joshua Fuller",
+    "url": "https://github.com/joshuafuller"
+  },
+  "plugins": [
+    {
+      "name": "spill-scrub",
+      "description": "Find and scrub credentials that leaked into Claude Code's local logs (transcripts, prompt history, paste-cache, shell snapshots, ~/.claude.json). Read-only by default; emits a deduplicated rotation checklist keyed by secret hash.",
+      "author": {
+        "name": "Joshua Fuller"
+      },
+      "category": "security",
+      "source": "./",
+      "homepage": "https://github.com/joshuafuller/claude-spill-scrub",
+      "license": "MIT"
+    }
+  ]
+}

@@ -231,6 +231,148 @@ class TestScrubIntegrity(unittest.TestCase):
         self.assertEqual(f.read_bytes(), once)
 
 
+class TestJsonSafety(unittest.TestCase):
+    """The files most worth protecting are not .jsonl: ~/.claude.json holds live
+    MCP credentials, and its backups have no useful suffix at all."""
+
+    def setUp(self):
+        self.d = Path(tempfile.mkdtemp(prefix="spillscrub-json-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def _config(self):
+        return {
+            "mcpServers": {
+                "unifi": {
+                    "command": "uvx",
+                    "args": ["unifi-mcp"],
+                    "env": {"UNIFI_API_KEY": PLANTED["github-pat"]},
+                }
+            },
+            "projects": {"/home/user": {"allowedTools": []}},
+        }
+
+    def test_pretty_printed_claude_json_stays_valid(self):
+        f = self.d / ".claude.json"
+        f.write_text(json.dumps(self._config(), indent=2))
+        res = ss.scrub_file(f, ss.ALL_RULES, None)
+        self.assertTrue(res.scrubbed)
+        obj = json.loads(f.read_text())          # raises if we broke it
+        key = obj["mcpServers"]["unifi"]["env"]["UNIFI_API_KEY"]
+        self.assertNotIn(PLANTED["github-pat"], key)
+        self.assertIn("[REDACTED", key)
+        self.assertEqual(obj["projects"], {"/home/user": {"allowedTools": []}})
+
+    def test_suffixless_json_backup_stays_valid(self):
+        f = self.d / ".claude.json.backup.1787768567441"
+        f.write_text(json.dumps(self._config(), indent=2))
+        res = ss.scrub_file(f, ss.ALL_RULES, None)
+        self.assertTrue(res.scrubbed)
+        json.loads(f.read_text())
+        self.assertNotIn(PLANTED["github-pat"], f.read_text())
+
+    def test_single_line_json_without_jsonl_suffix_is_guarded(self):
+        f = self.d / "config.json"
+        f.write_text(json.dumps({"token": PLANTED["gitlab-pat"]}))
+        ss.scrub_file(f, ss.ALL_RULES, None)
+        json.loads(f.read_text())
+
+    def test_non_json_file_is_not_json_guarded(self):
+        f = self.d / "notes.txt"
+        f.write_text(f"the key was {PLANTED['github-pat']} -- not json at all\n")
+        res = ss.scrub_file(f, ss.ALL_RULES, None)
+        self.assertTrue(res.scrubbed)
+        self.assertNotIn(PLANTED["github-pat"], f.read_text())
+
+
+class TestRootRedirect(unittest.TestCase):
+    def test_root_does_not_reach_the_real_home_config(self):
+        d = Path(tempfile.mkdtemp(prefix="spillscrub-root-"))
+        try:
+            (d / ".claude" / "projects").mkdir(parents=True)
+            (d / ".claude.json").write_text("{}")
+            files = ss.iter_target_files(d / ".claude", d, [])
+            self.assertIn((d / ".claude.json").resolve(),
+                          [f.resolve() for f in files])
+            real = (Path.home() / ".claude.json").resolve()
+            self.assertNotIn(real, [f.resolve() for f in files],
+                             "--root still reached the real ~/.claude.json")
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+class TestTierDefaults(unittest.TestCase):
+    def test_scrub_defaults_to_tier1_only(self):
+        d = Path(tempfile.mkdtemp(prefix="spillscrub-tier-"))
+        try:
+            f = d / "t.jsonl"
+            # a tier-2 shape only; no vendor prefix anywhere
+            f.write_text(jline("DB_PASSWORD=Kq2Lm9Pz4Rw8Tn3V") + "\n")
+            before = f.read_bytes()
+            ss.main(["scrub", "--yes", "--include-live", "--only", str(d)])
+            self.assertEqual(f.read_bytes(), before,
+                             "scrub touched a tier-2 hit without --tier 0")
+            ss.main(["scrub", "--yes", "--include-live", "--tier", "0",
+                     "--only", str(d)])
+            self.assertNotIn("Kq2Lm9Pz4Rw8Tn3V", f.read_text())
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+class TestMultilineSecrets(unittest.TestCase):
+    """A PEM block spans lines, so a line-by-line rewrite silently misses the
+    single highest-severity thing this tool looks for."""
+
+    PEM = ("-----BEGIN OPENSSH PRIVATE KEY-----\n"
+           "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz\n"
+           "c2gtZWQyNTUxOQAAACBQ7mK3vLnRr8xTf2WqYs4dJhNpVzXcE9uAoBiKmLwPdQ\n"
+           "-----END OPENSSH PRIVATE KEY-----")
+
+    def setUp(self):
+        self.d = Path(tempfile.mkdtemp(prefix="spillscrub-ml-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_pem_block_is_actually_removed_from_disk(self):
+        f = self.d / "id_ed25519"
+        f.write_text(f"# key material\n{self.PEM}\n# end\n")
+        res = ss.scrub_file(f, ss.ALL_RULES, None)
+        self.assertTrue(res.scrubbed, "multi-line secret was detected but not written")
+        out = f.read_text()
+        self.assertNotIn("b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ", out)
+        self.assertNotIn("-----BEGIN OPENSSH PRIVATE KEY-----", out)
+        self.assertIn("[REDACTED rule=private-key-block", out)
+        self.assertIn("# key material", out)
+        self.assertIn("# end", out)
+
+    def test_pem_scrub_is_idempotent(self):
+        f = self.d / "k.pem"
+        f.write_text(self.PEM + "\n")
+        ss.scrub_file(f, ss.ALL_RULES, None)
+        once = f.read_bytes()
+        res = ss.scrub_file(f, ss.ALL_RULES, None)
+        self.assertFalse(res.scrubbed)
+        self.assertEqual(f.read_bytes(), once)
+
+    def test_escaped_pem_inside_jsonl_still_works(self):
+        f = self.d / "t.jsonl"
+        f.write_text(jline(f"here is the key:\n{self.PEM}") + "\n")
+        res = ss.scrub_file(f, ss.ALL_RULES, None)
+        self.assertTrue(res.scrubbed)
+        for line in f.read_text().splitlines():
+            json.loads(line)
+        self.assertNotIn("b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ", f.read_text())
+
+    def test_a_scan_and_a_scrub_agree_on_multiline(self):
+        f = self.d / "id_rsa"
+        f.write_text(self.PEM + "\n")
+        scanned = ss.scan_file(f, ss.ALL_RULES).matches
+        scrubbed = ss.scrub_file(f, ss.ALL_RULES, None).matches
+        self.assertEqual([m.digest for m in scanned], [m.digest for m in scrubbed])
+
+
 class TestManifest(unittest.TestCase):
     def test_manifest_dedups_and_never_contains_the_secret(self):
         secret = PLANTED["github-pat"]
