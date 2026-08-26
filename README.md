@@ -15,15 +15,21 @@ machine. This tool does the cleanup half.
 
 ## Quickstart
 
-Nothing to clone, no dependencies. In a Claude Code session:
+No dependencies. Two commands in a Claude Code session:
 
 ```
-/plugin marketplace add joshuafuller/claude-spill-scrub
-/plugin install spill-scrub@claude-spill-scrub
+/plugin marketplace add joshuafuller/claude-spill-scrub   # clones the repo for you
+/plugin install spill-scrub@claude-spill-scrub            # installs from that clone
 ```
 
-Then `/reload-skills` and run `/spill-scrub`. That is the whole onboarding — the
-same two commands work from a terminal as `claude plugin …`. See
+The first command clones the repo into
+`~/.claude/plugins/marketplaces/claude-spill-scrub/`. The second does no network
+work at all — it copies the plugin out of that clone. You never run `git`
+yourself, but a clone does happen, and the order matters: `install` fails if the
+marketplace was never added.
+
+Then `/reload-skills` and run `/spill-scrub`. The same two commands work from a
+terminal as `claude plugin …` — see
 [Install as a Claude Code skill](#install-as-a-claude-code-skill).
 
 Prefer the bare script? Python 3.10+, standard library only:
@@ -141,7 +147,10 @@ every config change, so a single MCP API key can sit in ten files. Cleaning
 
 ## Install as a Claude Code skill
 
-Two steps either way — `install` needs the marketplace registered first.
+Two steps either way. `marketplace add` is the one that touches the network: it
+clones the repo to `~/.claude/plugins/marketplaces/<name>/` and records it.
+`install` then reads that local clone and copies the plugin into the cache — no
+network, and it fails outright if `add` was never run.
 
 In a Claude Code session:
 
