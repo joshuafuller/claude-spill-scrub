@@ -130,19 +130,35 @@ every config change, so a single MCP API key can sit in ten files. Cleaning
 
 ## Install as a Claude Code skill
 
-From the marketplace:
+Two steps either way — `install` needs the marketplace registered first.
+
+In a Claude Code session:
 
 ```
 /plugin marketplace add joshuafuller/claude-spill-scrub
 /plugin install spill-scrub@claude-spill-scrub
 ```
 
-While the repo is private, `marketplace add` needs credentials that can clone it —
-`gh auth login` or an SSH key. A public fork needs neither. A local checkout works
-too: `/plugin marketplace add ~/development/claude-spill-scrub`.
+From a terminal:
 
-Without the plugin system: `./install.sh` symlinks `skills/spill-scrub` into
-`~/.claude/skills/`.
+```bash
+claude plugin marketplace add joshuafuller/claude-spill-scrub
+claude plugin install spill-scrub@claude-spill-scrub
+```
+
+Then `/reload-skills` picks it up live — no restart. Invoke it with
+`/spill-scrub`.
+
+While the repo is private, `marketplace add` needs credentials that can clone it —
+`gh auth login` or an SSH key. Once it is public, neither is needed. A local
+checkout works too, which is the fastest way to iterate on the skill itself:
+
+```bash
+claude plugin marketplace add ~/development/claude-spill-scrub
+```
+
+Without the plugin system at all: `./install.sh` symlinks `skills/spill-scrub`
+into `~/.claude/skills/`.
 
 The skill wraps the same script with the workflow that matters — scan before
 scrub, treat the two tiers differently, never print a secret back into the
