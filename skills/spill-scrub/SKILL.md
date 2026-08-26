@@ -2,6 +2,7 @@
 name: spill-scrub
 description: Find and scrub credentials that leaked into Claude Code's own local logs (transcripts, paste-cache, shell snapshots, ~/.claude.json). Use when the user mentions a spillage, a leaked or pasted secret, "clean the logs", "scrub my transcripts", "I pasted a key", "did a token get logged", or after any incident where a credential reached a chat window. Also use before sharing, syncing, or archiving a machine's ~/.claude directory.
 license: MIT
+argument-hint: [scan|scrub]
 allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/spillscrub.py scan) Bash(python3 ${CLAUDE_SKILL_DIR}/spillscrub.py scan *)
 ---
 
@@ -28,6 +29,10 @@ python3 ${CLAUDE_SKILL_DIR}/spillscrub.py <args>
 `${CLAUDE_SKILL_DIR}` resolves to this skill's own directory whichever way it was
 installed — plugin, `~/.claude/skills/`, or a project's `.claude/skills/` — so do
 not guess at paths or `cd` first.
+
+This only makes sense on the machine whose logs you are cleaning. In a cloud or
+Cowork session it would scan that container's `~/.claude`, not the user's. If the
+session is not local, say so and stop.
 
 `scan` is pre-approved in this skill's frontmatter and runs without a permission
 prompt. `scrub` is deliberately **not** pre-approved: it rewrites files in place,
