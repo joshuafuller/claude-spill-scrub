@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.spillscrub.tmp
+spill-manifest*.json
+spill-backup/
+*.log
