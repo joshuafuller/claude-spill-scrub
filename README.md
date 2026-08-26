@@ -54,12 +54,23 @@ was not approved to hold it. This tool does the cleanup half.
 
 ## Install
 
-Python 3.10+, standard library only.
+Python 3.10+, standard library only. No dependencies.
 
 ```bash
-git clone <this repo> && cd claude-spill-scrub
-chmod +x spillscrub.py
+git clone https://github.com/joshuafuller/claude-spill-scrub
+cd claude-spill-scrub
+./spillscrub.py scan
 ```
+
+As a Claude Code skill (`/spill-scrub`):
+
+```bash
+./install.sh      # symlinks skill/ into ~/.claude/skills/spill-scrub
+```
+
+The skill wraps the same script with the workflow that matters: scan before
+scrub, treat the two tiers differently, never print a secret back into the
+transcript you are cleaning, and end on rotation rather than on a clean file.
 
 ## Use
 
@@ -108,6 +119,18 @@ Add more with `--path`. Binary files and anything over 512 MB are skipped.
    variables, ticket comments.
 3. Report it if your organisation requires that. A spillage you cleaned quietly is
    still a spillage.
+
+## Speed
+
+Whole-corpus scan, not line-by-line. Each rule carries a literal anchor
+(`sk-ant-`, `AKIA`, `password`, …) checked with `str.find` before its regex runs,
+so most files skip most rules. Work is fanned across one process per CPU, largest
+file first. Two hot patterns were rewritten to lead with a literal alternation
+instead of a character class, which alone took the URL-credential rule from 46 s
+to 2.3 s over a 250 MB corpus.
+
+Measured: **598 MB in 13.4 s on 32 cores (45 MB/s)**. The first working version
+took over eight minutes on the same corpus. Use `-j` to change the worker count.
 
 ## Tests
 

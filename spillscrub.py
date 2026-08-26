@@ -65,63 +65,108 @@ class Rule:
     pattern: re.Pattern
     group: int = 0     # which capture group is the actual secret
     min_entropy: float = 0.0
+    anchors: tuple = ()   # literal substrings; at least one must be present
+    ci_anchors: bool = False  # match anchors case-insensitively
+
+    def possible_in(self, text: str, lowered: str | None) -> bool:
+        """Cheap literal pre-check. Running a regex over 600 MB of transcript is
+        ~2 s per rule; a str.find over the same text is ~30 ms. Almost every rule
+        has an unambiguous literal prefix, so most files skip most rules."""
+        if not self.anchors:
+            return True
+        hay = (lowered if lowered is not None else text.lower()) if self.ci_anchors else text
+        return any(a in hay for a in self.anchors)
 
 
-def R(name, tier, pattern, group=0, min_entropy=0.0, flags=0):
-    return Rule(name, tier, re.compile(pattern, flags), group, min_entropy)
+def R(name, tier, pattern, group=0, min_entropy=0.0, flags=0,
+      anchors=(), ci_anchors=False):
+    return Rule(name, tier, re.compile(pattern, flags), group, min_entropy,
+                tuple(anchors), ci_anchors)
 
 
 # Tier 1: unambiguous vendor-prefixed credentials. Near-zero false positives.
 TIER1 = [
-    R("anthropic-api-key", 1, r"sk-ant-[A-Za-z0-9_\-]{20,120}"),
-    R("openai-api-key", 1, r"sk-(?:proj-|svcacct-)?[A-Za-z0-9_\-]{32,120}"),
-    R("github-pat", 1, r"gh[pousr]_[A-Za-z0-9]{36,255}"),
-    R("github-fine-grained-pat", 1, r"github_pat_[A-Za-z0-9_]{60,255}"),
-    R("gitlab-pat", 1, r"glpat-[A-Za-z0-9_\-]{20,80}"),
-    R("gitlab-other-token", 1, r"gl(?:cbt|ptt|dt|soat|feed|rt|agent)-[A-Za-z0-9_\-]{20,80}"),
-    R("aws-access-key-id", 1, r"\b(?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}\b"),
-    R("slack-token", 1, r"xox[abposr]-[A-Za-z0-9\-]{10,250}"),
-    R("slack-webhook", 1, r"https://hooks\.slack\.com/services/[A-Za-z0-9/+]{40,}"),
-    R("google-api-key", 1, r"\bAIza[A-Za-z0-9_\-]{35}\b"),
-    R("google-oauth-token", 1, r"\bya29\.[A-Za-z0-9_\-]{20,}"),
-    R("huggingface-token", 1, r"\bhf_[A-Za-z0-9]{30,}\b"),
-    R("tailscale-key", 1, r"\btskey-(?:auth|api|client)-[A-Za-z0-9\-]{10,}"),
-    R("netbird-setup-key", 1, r"\bnb[a-z]*_[A-Za-z0-9]{30,}\b"),
-    R("stripe-key", 1, r"\b[rs]k_(?:live|test)_[A-Za-z0-9]{20,}\b"),
-    R("npm-token", 1, r"\bnpm_[A-Za-z0-9]{36}\b"),
-    R("pypi-token", 1, r"\bpypi-AgEIcHlwaS5vcmc[A-Za-z0-9_\-]{50,}"),
-    R("sendgrid-key", 1, r"\bSG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}\b"),
-    R("twilio-key", 1, r"\bSK[0-9a-fA-F]{32}\b"),
-    R("digitalocean-token", 1, r"\bdop_v1_[a-f0-9]{64}\b"),
-    R("cloudflare-token", 1, r"\bv1\.0-[A-Za-z0-9\-]{20,}-[A-Za-z0-9\-]{40,}"),
-    R("jwt", 1, r"\beyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"),
+    R("anthropic-api-key", 1, r"sk-ant-[A-Za-z0-9_\-]{20,120}",
+      anchors=("sk-ant-",)),
+    R("openai-api-key", 1, r"sk-(?:proj-|svcacct-)?[A-Za-z0-9_\-]{32,120}",
+      anchors=("sk-",)),
+    R("github-pat", 1, r"gh[pousr]_[A-Za-z0-9]{36,255}",
+      anchors=("ghp_", "gho_", "ghu_", "ghs_", "ghr_")),
+    R("github-fine-grained-pat", 1, r"github_pat_[A-Za-z0-9_]{60,255}",
+      anchors=("github_pat_",)),
+    R("gitlab-pat", 1, r"glpat-[A-Za-z0-9_\-]{20,80}",
+      anchors=("glpat-",)),
+    R("gitlab-other-token", 1, r"gl(?:cbt|ptt|dt|soat|feed|rt|agent)-[A-Za-z0-9_\-]{20,80}",
+      anchors=("glcbt-", "glptt-", "gldt-", "glsoat-", "glfeed-", "glrt-", "glagent-")),
+    R("aws-access-key-id", 1, r"\b(?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}\b",
+      anchors=("AKIA", "ASIA", "ABIA", "ACCA")),
+    R("slack-token", 1, r"xox[abposr]-[A-Za-z0-9\-]{10,250}",
+      anchors=("xoxa-", "xoxb-", "xoxp-", "xoxo-", "xoxs-", "xoxr-")),
+    R("slack-webhook", 1, r"https://hooks\.slack\.com/services/[A-Za-z0-9/+]{40,}",
+      anchors=("hooks.slack.com",)),
+    R("google-api-key", 1, r"\bAIza[A-Za-z0-9_\-]{35}\b", anchors=("AIza",)),
+    R("google-oauth-token", 1, r"\bya29\.[A-Za-z0-9_\-]{20,}", anchors=("ya29.",)),
+    R("huggingface-token", 1, r"\bhf_[A-Za-z0-9]{30,}\b", anchors=("hf_",)),
+    R("tailscale-key", 1, r"\btskey-(?:auth|api|client)-[A-Za-z0-9\-]{10,}",
+      anchors=("tskey-",)),
+    R("stripe-key", 1, r"\b[rs]k_(?:live|test)_[A-Za-z0-9]{20,}\b",
+      anchors=("sk_live_", "sk_test_", "rk_live_", "rk_test_")),
+    R("npm-token", 1, r"\bnpm_[A-Za-z0-9]{36}\b", anchors=("npm_",)),
+    R("pypi-token", 1, r"\bpypi-AgEIcHlwaS5vcmc[A-Za-z0-9_\-]{50,}",
+      anchors=("pypi-AgEIcHlwaS5vcmc",)),
+    R("sendgrid-key", 1, r"\bSG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}\b",
+      anchors=("SG.",)),
+    R("twilio-key", 1, r"\bSK[0-9a-fA-F]{32}\b", anchors=("SK",)),
+    R("digitalocean-token", 1, r"\bdop_v1_[a-f0-9]{64}\b", anchors=("dop_v1_",)),
+    R("cloudflare-token", 1, r"\bv1\.0-[A-Za-z0-9\-]{20,}-[A-Za-z0-9\-]{40,}",
+      anchors=("v1.0-",)),
+    R("jwt", 1, r"\beyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}",
+      anchors=("eyJ",)),
     R("private-key-block", 1,
       r"-----BEGIN (?:RSA |DSA |EC |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----"
-      r"[\s\S]{0,20000}?-----END (?:RSA |DSA |EC |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----"),
-    # user:pass embedded in a URL -> scrub only the password span
+      r"[\s\S]{0,20000}?-----END (?:RSA |DSA |EC |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----",
+      anchors=("-----BEGIN",)),
+    # user:pass inside a URL -> redact only the password span.
+    # The scheme is a literal alternation on purpose: a leading character class
+    # here costs ~46 s over a 250 MB corpus, the literal list costs ~1 s.
     R("url-basic-auth", 1,
-      r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s:/@\"']{1,64}:([^\s@\"'\\]{3,128})@", group=1),
+      r"\b(?:https?|ftps?|ssh|sftp|git|svn|mongodb(?:\+srv)?|postgres(?:ql)?|mysql|"
+      r"redis[s]?|amqps?|smtps?|imaps?|ldaps?|rtsps?|wss?)://"
+      r"[^\s:/@\"'<>]{1,64}:([^\s@\"'<>\\]{3,128})@", group=1,
+      anchors=("://",)),
 ]
 
 # Tier 2: shape/context based. Needs an entropy floor and a placeholder denylist.
+_SECRETISH = ("password", "passwd", "passphrase", "secret", "token", "apikey",
+              "api_key", "access_key", "private_key", "client_secret",
+              "auth_key", "credential")
+
 TIER2 = [
+    # Anchored on the literal keyword, not on a leading character class, for the
+    # same performance reason as url-basic-auth.
     R("env-assigned-secret", 2,
-      r"(?i)\b(?:[A-Z0-9_]*(?:PASSWORD|PASSWD|PASSPHRASE|SECRET|TOKEN|APIKEY|API_KEY|"
-      r"ACCESS_KEY|PRIVATE_KEY|CLIENT_SECRET|AUTH_KEY|CREDENTIAL)[A-Z0-9_]*)"
-      r"\s*[:=]\s*[\"']?([^\s\"'{}$,;\\]{8,200})[\"']?", group=1, min_entropy=2.6),
+      r"(?i)(?:PASSWORD|PASSWD|PASSPHRASE|SECRET|TOKEN|APIKEY|API_KEY|ACCESS_KEY|"
+      r"PRIVATE_KEY|CLIENT_SECRET|AUTH_KEY|CREDENTIAL)[A-Z0-9_]*"
+      r"\s*[:=]\s*[\"']?([^\s\"'{}$,;\\]{8,200})[\"']?",
+      group=1, min_entropy=2.6, anchors=_SECRETISH, ci_anchors=True),
     R("cli-password-flag", 2,
       r"(?i)--?(?:password|passwd|pass|token|api-key|apikey|secret)[=\s]+[\"']?"
-      r"([^\s\"'\\]{6,200})[\"']?", group=1, min_entropy=2.3),
-    R("sshpass", 2, r"sshpass\s+-p\s*[\"']?([^\s\"'\\]{3,200})[\"']?", group=1, min_entropy=1.5),
+      r"([^\s\"'\\]{6,200})[\"']?", group=1, min_entropy=2.3,
+      anchors=("-password", "-passwd", "-pass", "-token", "-api-key", "-apikey",
+               "-secret"), ci_anchors=True),
+    R("sshpass", 2, r"sshpass\s+-p\s*[\"']?([^\s\"'\\]{3,200})[\"']?",
+      group=1, min_entropy=1.5, anchors=("sshpass",), ci_anchors=True),
     R("authorization-header", 2,
-      r"(?i)authorization[\"']?\s*[:=]\s*[\"']?(?:Bearer|Basic|Token)\s+([A-Za-z0-9_\-\.=+/]{16,500})",
-      group=1, min_entropy=3.0),
+      r"(?i)authorization[\"']?\s*[:=]\s*[\"']?(?:Bearer|Basic|Token)\s+"
+      r"([A-Za-z0-9_\-\.=+/]{16,500})",
+      group=1, min_entropy=3.0, anchors=("authorization",), ci_anchors=True),
     R("aws-secret-access-key", 2,
       r"(?i)aws_?secret_?access_?key\s*[:=]\s*[\"']?([A-Za-z0-9/+=]{40})[\"']?",
-      group=1, min_entropy=3.5),
+      group=1, min_entropy=3.5, anchors=("secret",), ci_anchors=True),
     R("mysql-pg-cli-password", 2,
       r"(?i)\b(?:mysql|psql|mongo|redis-cli)\b[^\n]{0,120}?-p\s*([^\s\"'\\]{6,120})",
-      group=1, min_entropy=2.3),
+      group=1, min_entropy=2.3, anchors=("mysql", "psql", "mongo", "redis-cli"),
+      ci_anchors=True),
 ]
 
 ALL_RULES = TIER1 + TIER2
@@ -196,13 +241,29 @@ class Match:
     start: int
     end: int
     secret: str
+    context: str = ""      # surrounding text, secret already masked
 
     @property
     def digest(self) -> str:
         return hashlib.sha256(self.secret.encode("utf-8", "surrogateescape")).hexdigest()[:12]
 
 
-def find_matches(text: str, rules) -> list[Match]:
+def _context(text: str, start: int, end: int, secret: str, width: int = 45) -> str:
+    """Surrounding text with the secret replaced by a length marker.
+
+    Tier-2 hits need a human decision, and that decision needs the key name and
+    the line around it. It must never need the value itself.
+    """
+    left = text[max(0, start - width):start].replace("\n", " ")
+    right = text[end:end + width].replace("\n", " ")
+    return f"{left}<{len(secret)} chars>{right}".strip()
+
+
+def find_matches(text: str, rules, lowered: str | None = None) -> list[Match]:
+    rules = [r for r in rules if r.possible_in(text, lowered)]
+    if not rules:
+        return []
+
     # Spans that are already redacted are off limits, so scrubbing is idempotent.
     masked = [mm.span() for mm in REDACTED_SPAN_RE.finditer(text)]
 
@@ -229,7 +290,8 @@ def find_matches(text: str, rules) -> list[Match]:
             else:
                 if any(mk in secret for mk in REDACT_MARKERS):
                     continue
-            out.append(Match(rule.name, rule.tier, start, end, secret))
+            out.append(Match(rule.name, rule.tier, start, end, secret,
+                             _context(text, start, end, secret)))
 
     # Resolve overlaps: prefer tier 1, then the longer span.
     out.sort(key=lambda m: (m.start, m.tier, -(m.end - m.start)))
@@ -341,13 +403,18 @@ class FileResult:
     error: str | None = None
 
 
+def _needs_lower(rules) -> bool:
+    return any(r.ci_anchors for r in rules)
+
+
 def scan_file(path: Path, rules) -> FileResult:
     res = FileResult(path=path)
     text = read_text(path)
     if text is None:
         res.skipped_reason = "binary-or-unreadable"
         return res
-    res.matches = find_matches(text, rules)
+    lowered = text.lower() if _needs_lower(rules) else None
+    res.matches = find_matches(text, rules, lowered)
     return res
 
 
@@ -361,6 +428,12 @@ def scrub_file(path: Path, rules, backup_dir: Path | None) -> FileResult:
     original = read_text(path)
     if original is None:
         res.skipped_reason = "binary-or-unreadable"
+        return res
+
+    # Whole-file pass first. Most files have nothing, and this avoids paying the
+    # per-line regex setup cost across millions of transcript lines.
+    lowered = original.lower() if _needs_lower(rules) else None
+    if not find_matches(original, rules, lowered):
         return res
 
     is_jsonl = path.suffix == ".jsonl"
@@ -412,6 +485,76 @@ def scrub_file(path: Path, rules, backup_dir: Path | None) -> FileResult:
     return res
 
 
+# Worker entry point. Module level so it is picklable by ProcessPoolExecutor.
+_W = {}
+
+
+def _worker_init(tier, mode, backup_dir):
+    _W["rules"] = {1: TIER1, 2: TIER2}.get(tier, ALL_RULES)
+    _W["mode"] = mode
+    _W["backup"] = Path(backup_dir) if backup_dir else None
+
+
+def _worker(path_str: str) -> FileResult:
+    path = Path(path_str)
+    try:
+        if _W["mode"] == "scan":
+            return scan_file(path, _W["rules"])
+        return scrub_file(path, _W["rules"], _W["backup"])
+    except Exception as e:                      # never let one file kill the run
+        return FileResult(path=path, error=f"{type(e).__name__}: {e}")
+
+
+def process_files(files, tier, mode, backup_dir, jobs, progress=True):
+    """Fan the file list across worker processes, largest file first.
+
+    Transcript corpora are heavily skewed - a handful of 50 MB sessions next to
+    hundreds of tiny ones - so scheduling the big ones first keeps every core
+    busy to the end instead of leaving one worker chewing a giant file alone.
+    """
+    rules = {1: TIER1, 2: TIER2}.get(tier, ALL_RULES)
+    ordered = sorted(files, key=lambda p: -_safe_size(p))
+
+    if jobs <= 1 or len(ordered) < 2:
+        results = []
+        for i, f in enumerate(ordered, 1):
+            _tick(progress, i, len(ordered))
+            results.append(scan_file(f, rules) if mode == "scan"
+                           else scrub_file(f, rules, backup_dir))
+        _untick(progress)
+        return results
+
+    from concurrent.futures import ProcessPoolExecutor
+
+    results = []
+    with ProcessPoolExecutor(max_workers=jobs, initializer=_worker_init,
+                             initargs=(tier, mode,
+                                       str(backup_dir) if backup_dir else None)) as ex:
+        for i, r in enumerate(ex.map(_worker, [str(f) for f in ordered], chunksize=1), 1):
+            _tick(progress, i, len(ordered))
+            results.append(r)
+    _untick(progress)
+    return results
+
+
+def _safe_size(p: Path) -> int:
+    try:
+        return p.stat().st_size
+    except OSError:
+        return 0
+
+
+def _tick(on: bool, i: int, total: int):
+    if on and sys.stderr.isatty() and (i % 5 == 0 or i == total):
+        pct = 100 * i // max(total, 1)
+        print(f"\r  {i}/{total} files ({pct}%)", end="", file=sys.stderr, flush=True)
+
+
+def _untick(on: bool):
+    if on and sys.stderr.isatty():
+        print("\r" + " " * 40 + "\r", end="", file=sys.stderr, flush=True)
+
+
 # --------------------------------------------------------------------------
 # Reporting
 # --------------------------------------------------------------------------
@@ -428,6 +571,7 @@ def build_manifest(results: list[FileResult]) -> dict:
                 "length": len(m.secret),
                 "occurrences": 0,
                 "files": set(),
+                "context": m.context,
             })
             entry["occurrences"] += 1
             entry["files"].add(str(r.path))
@@ -448,7 +592,8 @@ def build_manifest(results: list[FileResult]) -> dict:
     }
 
 
-def print_report(results: list[FileResult], manifest: dict, mode: str, skipped: list[tuple[Path, str]]):
+def print_report(results: list[FileResult], manifest: dict, mode: str,
+                 skipped: list[tuple[Path, str]], show_context: bool = False):
     hits = [r for r in results if r.matches]
     t1 = sum(1 for e in manifest["secrets"] if e["tier"] == 1)
     t2 = sum(1 for e in manifest["secrets"] if e["tier"] == 2)
@@ -475,6 +620,8 @@ def print_report(results: list[FileResult], manifest: dict, mode: str, skipped: 
             tag = "CERTAIN" if e["tier"] == 1 else "REVIEW "
             print(f"  [{tag}] {e['rule']:<28} {e['sha256_prefix']}  "
                   f"x{e['occurrences']} in {e['file_count']} file(s)")
+            if show_context and e.get("context"):
+                print(f"           ... {e['context']} ...")
         print()
 
     if hits:
@@ -531,6 +678,11 @@ def main(argv=None) -> int:
     p.add_argument("--manifest", default=None, help="write the JSON manifest here")
     p.add_argument("--include-live", action="store_true",
                    help="do not skip recently-modified files (unsafe while Claude runs)")
+    p.add_argument("--context", action="store_true",
+                   help="show masked surrounding text for each finding "
+                        "(the secret itself is never printed)")
+    p.add_argument("-j", "--jobs", type=int, default=0,
+                   help="worker processes (default: one per CPU, capped at 32)")
     p.add_argument("--version", action="version", version=VERSION)
     args = p.parse_args(argv)
 
@@ -575,28 +727,29 @@ def main(argv=None) -> int:
         backup_dir.mkdir(parents=True, exist_ok=True)
         os.chmod(backup_dir, 0o700)
 
-    results: list[FileResult] = []
     skipped: list[tuple[Path, str]] = []
+    if args.mode == "scrub" and not args.include_live:
+        live = [f for f in files if is_live(f, args.quiet_seconds, skip_ids)]
+        skipped = [(f, "live-or-recent") for f in live]
+        live_set = set(live)
+        files = [f for f in files if f not in live_set]
 
-    for i, f in enumerate(files, 1):
-        if sys.stderr.isatty() and i % 25 == 0:
-            print(f"\r  {i}/{len(files)}", end="", file=sys.stderr)
-        if args.mode == "scrub" and not args.include_live and is_live(f, args.quiet_seconds, skip_ids):
-            skipped.append((f, "live-or-recent"))
-            continue
-        if args.mode == "scan":
-            results.append(scan_file(f, rules))
-        else:
-            results.append(scrub_file(f, rules, backup_dir))
-    if sys.stderr.isatty():
-        print("\r" + " " * 30 + "\r", end="", file=sys.stderr)
+    jobs = args.jobs or min(32, os.cpu_count() or 1)
+    t0 = time.time()
+    results = process_files(files, args.tier, args.mode, backup_dir, jobs)
+    elapsed = time.time() - t0
 
     manifest = build_manifest(results)
     manifest["mode"] = args.mode
     manifest["files_examined"] = len(results)
     manifest["files_skipped_live"] = [str(p) for p, _ in skipped]
+    manifest["elapsed_seconds"] = round(elapsed, 2)
+    manifest["jobs"] = jobs
 
-    print_report(results, manifest, args.mode, skipped)
+    total_mb = sum(_safe_size(r.path) for r in results) / 1e6
+    print(f"  {total_mb:.0f} MB in {elapsed:.1f}s on {jobs} worker(s) "
+          f"({total_mb / max(elapsed, 0.01):.0f} MB/s)")
+    print_report(results, manifest, args.mode, skipped, args.context)
 
     if args.manifest:
         mp = Path(args.manifest).expanduser()

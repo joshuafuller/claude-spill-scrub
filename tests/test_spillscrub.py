@@ -111,6 +111,27 @@ class TestDetection(unittest.TestCase):
         self.assertEqual(len(m.digest), 12)
 
 
+class TestContext(unittest.TestCase):
+    def test_context_never_contains_the_secret(self):
+        for secret in PLANTED.values():
+            line = f'DEPLOY_KEY="{secret}"  # staging box'
+            for m in ss.find_matches(line, ss.ALL_RULES):
+                self.assertNotIn(m.secret, m.context)
+                self.assertIn("chars>", m.context)
+
+    def test_context_keeps_the_key_name(self):
+        m = ss.find_matches(f'GITLAB_TOKEN={PLANTED["gitlab-pat"]}', ss.ALL_RULES)[0]
+        self.assertIn("GITLAB_TOKEN", m.context)
+
+    def test_manifest_context_carries_no_secret(self):
+        secret = PLANTED["anthropic-api-key"]
+        r = ss.FileResult(Path("/x.jsonl"),
+                          ss.find_matches(f"KEY={secret}", ss.ALL_RULES))
+        man = ss.build_manifest([r])
+        self.assertNotIn(secret, json.dumps(man))
+        self.assertTrue(man["secrets"][0]["context"])
+
+
 class TestScrubIntegrity(unittest.TestCase):
     def setUp(self):
         self.d = Path(tempfile.mkdtemp(prefix="spillscrub-test-"))
