@@ -1,0 +1,8 @@
+# The test fixtures are deliberately shaped like real credentials so the
+# detector can be proven against them. None of them are live.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "spillscrub test fixtures are synthetic by design"
+paths = ['''tests/test_spillscrub\.py''']
