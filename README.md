@@ -4,9 +4,10 @@
 
 Claude Code is very good at telling you that you just pasted a live token. It does
 not clean up after you. The token stays in the session transcript on disk, and it
-is read back into context every time that session is resumed or searched. In DoD
-terms that is a **spillage**: sensitive data written somewhere that was never
-approved to hold it. This tool does the cleanup half.
+is read back into context every time that session is resumed or searched. One
+careless paste becomes a live credential in plaintext, in a file you will never
+think to open, in a directory that gets backed up, synced, and copied to your next
+machine. This tool does the cleanup half.
 
 > **Scrubbing is not remediation.** Deleting a key from a log does not revoke the
 > key. Every run ends with a rotation checklist. Work that list, or you have
