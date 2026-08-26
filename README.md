@@ -9,9 +9,17 @@ careless paste becomes a live credential in plaintext, in a file you will never
 think to open, in a directory that gets backed up, synced, and copied to your next
 machine. This tool does the cleanup half.
 
+> [!IMPORTANT]
 > **Scrubbing is not remediation.** Deleting a key from a log does not revoke the
 > key. Every run ends with a rotation checklist. Work that list, or you have
 > cleaned a file and closed nothing.
+
+### Contents
+
+**Start here** — [Quickstart](#quickstart) · [Install as a skill](#install-as-a-claude-code-skill) · [Run it twice](#run-it-twice)
+**What it does** — [What it finds](#what-it-finds) · [What a scrub does to a line](#what-a-scrub-does-to-a-line) · [The two tiers](#the-two-tiers) · [What it looks at](#what-it-looks-at)
+**Using it** — [Command reference](#command-reference) · [After you scrub](#after-you-scrub) · [Troubleshooting](#troubleshooting)
+**Judging it** — [What this is NOT](#what-this-is-not) · [Evidence](#evidence) · [Tests](#tests) · [Adding a rule](#adding-a-rule)
 
 ## Quickstart
 
@@ -22,11 +30,12 @@ No dependencies. Two commands in a Claude Code session:
 /plugin install spill-scrub@claude-spill-scrub            # installs from that clone
 ```
 
-The first command clones the repo into
-`~/.claude/plugins/marketplaces/claude-spill-scrub/`. The second does no network
-work at all — it copies the plugin out of that clone. You never run `git`
-yourself, but a clone does happen, and the order matters: `install` fails if the
-marketplace was never added.
+> [!NOTE]
+> The first command clones the repo into
+> `~/.claude/plugins/marketplaces/claude-spill-scrub/`. The second does no network
+> work at all — it copies the plugin out of that clone. You never run `git`
+> yourself, but a clone does happen, and the order matters: `install` fails if the
+> marketplace was never added.
 
 Then `/reload-skills` and run `/spill-scrub`. The same two commands work from a
 terminal as `claude plugin …` — see
@@ -52,6 +61,8 @@ Three names, one thing:
 | repo / marketplace | `claude-spill-scrub` |
 | command | `spillscrub.py` |
 | skill / plugin | `spill-scrub` |
+
+---
 
 ## What it finds
 
@@ -90,6 +101,8 @@ Secrets are identified by a SHA-256 prefix, never printed. The same key appears 
 many transcripts — context gets re-read — so the deduplicated list is what you
 work from.
 
+---
+
 ## What a scrub does to a line
 
 Before:
@@ -112,11 +125,15 @@ Only the matched span changes. The username survives, the URL still works as a
 URL, the third line is untouched, and the record still parses as JSON. A file with
 no findings comes out byte-for-byte identical.
 
+---
+
 ## Run it twice
 
-`scrub` skips any file modified in the last 15 minutes (`--quiet-seconds`) and any
-session id in `$CLAUDE_SESSION_ID`. Rewriting a file a running session holds open
-either corrupts it or gets clobbered on the next write.
+> [!WARNING]
+> One pass is not enough. `scrub` skips any file modified in the last 15 minutes
+> (`--quiet-seconds`) and any session id in `$CLAUDE_SESSION_ID`, because
+> rewriting a file a running session holds open either corrupts it or gets
+> clobbered on the next write.
 
 The catch: **the files with the most secrets are always the live ones.** On a real
 first pass, 15 files were cleaned and 42 credentials were left behind — every one
@@ -138,11 +155,14 @@ So:
    and the config backups.
 4. `./spillscrub.py scan --tier 1` — confirm it comes back clean.
 
-Do not reach for `--include-live` to skip step 2. It exists for the test suite.
+> [!CAUTION]
+> Do not reach for `--include-live` to skip step 2. It exists for the test suite.
 
 Note the `backups/.claude.json.backup.*` pile: Claude Code writes a new one on
 every config change, so a single MCP API key can sit in ten files. Cleaning
 `~/.claude.json` alone accomplishes very little.
+
+---
 
 ## Install as a Claude Code skill
 
@@ -183,6 +203,8 @@ The skill wraps the same script with the workflow that matters — scan before
 scrub, treat the two tiers differently, never print a secret back into the
 transcript you are cleaning, and end on rotation rather than on a clean file.
 
+---
+
 ## Command reference
 
 ```bash
@@ -209,6 +231,8 @@ transcript you are cleaning, and end on rotation rather than on a clean file.
 
 Exit codes: `0` clean, `1` findings, `2` usage error.
 
+---
+
 ## The two tiers
 
 **Tier 1 — certain.** Vendor-prefixed credentials: `sk-ant-`, `ghp_`,
@@ -221,10 +245,15 @@ compromised.
 `Authorization: Bearer …`, behind an entropy floor and a placeholder denylist that
 drops `changeme`, `<your-key>`, `${VAR}` and friends.
 
+> [!TIP]
+> Triage tier 2 with `--context` before you widen a scrub to it.
+
 Tier 2 is noisy. On that same corpus it produced ~1,140 candidates
 and the large majority were Kubernetes manifests, YAML keys, and source code that
 merely *look* like `secret: value`. That is why `scrub` defaults to tier 1 and
 `--tier 0` must be asked for. Triage tier 2 with `--context` before widening.
+
+---
 
 ## What it looks at
 
@@ -237,6 +266,8 @@ server `env` blocks keep API keys.
 
 Add more with `--path`. Binary files and anything over 512 MB are skipped.
 
+---
+
 ## After you scrub
 
 1. **Rotate every secret in the manifest.** The scrub removed the value from your
@@ -245,10 +276,12 @@ Add more with `--path`. Binary files and anything over 512 MB are skipped.
    variables, ticket comments.
 3. Report it if your organisation requires that. A spillage you cleaned quietly is
    still a spillage.
-4. Delete the manifest and any `--backup-dir` afterwards. The manifest holds only
+4. **Delete the manifest and any `--backup-dir` afterwards.** The manifest holds only
    hashes and paths, but the backups hold plaintext, which makes them a fresh
    spillage in a new location. Write both outside `~/.claude` so the next scan does
    not pick them up.
+
+---
 
 ## What this is NOT
 
@@ -270,6 +303,8 @@ Add more with `--path`. Binary files and anything over 512 MB are skipped.
 - **Not a git history rewriter.** If a secret is committed, this will not help.
 - **Not version-locked to Claude Code.** The on-disk layout is not a stable public
   interface. Re-check the target list after an upgrade.
+
+---
 
 ## Evidence
 
@@ -324,6 +359,8 @@ corpus.
 The first working version took over eight minutes on the same corpus. `-j` sets the
 worker count.
 
+---
+
 ## Troubleshooting
 
 **"It broke my transcript."** Check the line for a `[REDACTED rule=… sha=…]`
@@ -343,6 +380,8 @@ requires `--yes`, and tier 2 requires `--tier 0` on top of that.
 **"The scan found my own test fixtures."** Anything that reads a file full of
 example credentials puts them in a transcript. They redact like anything else.
 
+---
+
 ## Tests
 
 ```bash
@@ -357,6 +396,8 @@ removed, pretty-printed `~/.claude.json` survives, `--root` does not reach the r
 config, `scrub` defaults to tier 1, permissions and line endings survive, and the
 manifest never contains a secret.
 
+---
+
 ## Adding a rule
 
 Append `R(name, tier, pattern, group=…, min_entropy=…, anchors=…)` to `TIER1` or
@@ -364,6 +405,8 @@ Append `R(name, tier, pattern, group=…, min_entropy=…, anchors=…)` to `TIE
 file, and run the suite. Give every rule a literal `anchors=` tuple or it will scan
 the whole corpus on its own. Tier 1 is for patterns you would auto-scrub without
 looking; everything else is tier 2.
+
+---
 
 ## Licence
 
